@@ -1,146 +1,97 @@
 from aws_cdk import (
     Stack,
     aws_ec2 as ec2,
-    aws_rds as rds,
-    aws_elasticloadbalancingv2 as elbv2,
-    aws_autoscaling as autoscaling,
-    aws_s3 as s3,
-    aws_lambda as lambda_,
-    aws_iam as iam,
-    aws_events as events,
-    aws_events_targets as targets,
-    RemovalPolicy,
-    Duration
+    aws_sns as sns,
+    Tags
 )
 from constructs import Construct
+from constructs.secure_vpc import SecureVpc
+from constructs.ecommerce_database import EcommerceDatabase
+from constructs.ecommerce_compute import EcommerceCompute
+from constructs.dr_orchestrator import DROrchestrator
+from constructs.monitoring_dashboard import MonitoringDashboard
+from config.environments import EnvironmentConfig
 
 class DRRegionStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, primary_vpc_id: str, primary_db_instance, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str,
+                 config: EnvironmentConfig,
+                 primary_database,
+                 **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
-
-        # VPC (mirrored from primary)
-        self.vpc = ec2.Vpc(self, "DRVPC",
-            max_azs=2,
-            nat_gateways=1,  # Minimal for cost optimization
-            subnet_configuration=[
-                ec2.SubnetConfiguration(name="Public", subnet_type=ec2.SubnetType.PUBLIC, cidr_mask=24),
-                ec2.SubnetConfiguration(name="Private", subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS, cidr_mask=24),
-                ec2.SubnetConfiguration(name="Database", subnet_type=ec2.SubnetType.PRIVATE_ISOLATED, cidr_mask=24)
-            ]
+        
+        # SNS Topic for DR notifications
+        self.notification_topic = sns.Topic(self, "DRNotificationTopic",
+            display_name="DR Region Notifications"
         )
-
+        
+        # Secure VPC (cost-optimized for pilot light)
+        self.vpc_construct = SecureVpc(self, "DRVPC",
+            cidr=config.dr_region.vpc_cidr,
+            enable_flow_logs=True
+        )
+        self.vpc = self.vpc_construct.vpc
+        
         # Security Groups (mirrored from primary)
-        web_sg = ec2.SecurityGroup(self, "DRWebSecurityGroup",
+        self.web_sg = ec2.SecurityGroup(self, "DRWebSG",
             vpc=self.vpc,
+            description="DR Security group for web servers",
             allow_all_outbound=True
         )
-        web_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
-        web_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443))
-
-        db_sg = ec2.SecurityGroup(self, "DRDatabaseSecurityGroup",
+        self.web_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
+        self.web_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443))
+        
+        self.alb_sg = ec2.SecurityGroup(self, "DRALBSG",
             vpc=self.vpc,
+            description="DR Security group for ALB",
+            allow_all_outbound=True
+        )
+        self.alb_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
+        self.alb_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(443))
+        
+        self.db_sg = ec2.SecurityGroup(self, "DRDatabaseSG",
+            vpc=self.vpc,
+            description="DR Security group for database",
             allow_all_outbound=False
         )
-        db_sg.add_ingress_rule(web_sg, ec2.Port.tcp(3306))
-
-        # RDS Read Replica (Pilot Light component)
-        self.read_replica = rds.DatabaseInstanceReadReplica(self, "DRReadReplica",
-            source_database_instance=primary_db_instance,
-            instance_type=ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
+        self.db_sg.add_ingress_rule(self.web_sg, ec2.Port.tcp(3306))
+        
+        # Read Replica Database (Pilot Light component)
+        self.database_construct = EcommerceDatabase(self, "DRDatabase",
             vpc=self.vpc,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
-            security_groups=[db_sg],
-            deletion_protection=False,
-            removal_policy=RemovalPolicy.DESTROY
+            config=config.database,
+            security_group=self.db_sg,
+            notification_topic=self.notification_topic,
+            is_primary=False,
+            source_database=primary_database
         )
-
-        # S3 Bucket for DR (with cross-region replication configured separately)
-        self.dr_bucket = s3.Bucket(self, "DRAppDataBucket",
-            versioned=True,
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True
-        )
-
-        # Pre-configured Launch Template (ready but not active)
-        launch_template = ec2.LaunchTemplate(self, "DRWebServerTemplate",
-            instance_type=ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MICRO),
-            machine_image=ec2.AmazonLinuxImage(generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
-            security_group=web_sg,
-            user_data=ec2.UserData.for_linux()
-        )
-
-        # Auto Scaling Group (initially with 0 capacity - Pilot Light)
-        self.asg = autoscaling.AutoScalingGroup(self, "DRWebServerASG",
+        self.database = self.database_construct.database
+        
+        # Compute Infrastructure (Pilot Light - scaled to 0)
+        self.compute_construct = EcommerceCompute(self, "DRCompute",
             vpc=self.vpc,
-            launch_template=launch_template,
-            min_capacity=0,  # Pilot Light: no running instances
-            max_capacity=10,
-            desired_capacity=0,  # Pilot Light: no running instances
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS)
+            config=config.compute,
+            security_groups=[self.web_sg, self.alb_sg],
+            notification_topic=self.notification_topic,
+            is_pilot_light=True  # This scales ASG to 0
         )
-
-        # Application Load Balancer (pre-configured but minimal)
-        self.load_balancer = elbv2.ApplicationLoadBalancer(self, "DRALB",
-            vpc=self.vpc,
-            internet_facing=True,
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+        self.load_balancer = self.compute_construct.load_balancer
+        self.auto_scaling_group = self.compute_construct.auto_scaling_group
+        
+        # DR Orchestrator
+        self.dr_orchestrator = DROrchestrator(self, "DROrchestrator",
+            notification_topic=self.notification_topic
         )
-
-        listener = self.load_balancer.add_listener("DRListener",
-            port=80,
-            default_targets=[self.asg]
+        
+        # Monitoring Dashboard
+        self.monitoring = MonitoringDashboard(self, "Monitoring",
+            primary_alb_arn="primary-alb-arn",  # Would be passed from primary stack
+            dr_alb_arn=self.load_balancer.load_balancer_arn,
+            primary_db_identifier="primary-db-id",  # Would be passed from primary stack
+            dr_db_identifier=self.database.instance_identifier
         )
-
-        # Lambda function for DR activation
-        dr_activation_role = iam.Role(self, "DRActivationRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com"),
-            managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole")
-            ],
-            inline_policies={
-                "DRActivationPolicy": iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            actions=[
-                                "autoscaling:UpdateAutoScalingGroup",
-                                "rds:PromoteReadReplica",
-                                "route53:ChangeResourceRecordSets"
-                            ],
-                            resources=["*"]
-                        )
-                    ]
-                )
-            }
-        )
-
-        self.dr_activation_function = lambda_.Function(self, "DRActivationFunction",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            handler="index.handler",
-            role=dr_activation_role,
-            code=lambda_.Code.from_inline("""
-import boto3
-import json
-
-def handler(event, context):
-    autoscaling = boto3.client('autoscaling')
-    rds = boto3.client('rds')
-    
-    # Scale up ASG
-    autoscaling.update_auto_scaling_group(
-        AutoScalingGroupName=event['asg_name'],
-        DesiredCapacity=2,
-        MinSize=2
-    )
-    
-    # Promote read replica
-    rds.promote_read_replica(
-        DBInstanceIdentifier=event['replica_id']
-    )
-    
-    return {
-        'statusCode': 200,
-        'body': json.dumps('DR activation initiated')
-    }
-            """),
-            timeout=Duration.minutes(5)
-        )
+        
+        # Tags
+        Tags.of(self).add("Environment", config.environment_name)
+        Tags.of(self).add("Region", "DR")
+        Tags.of(self).add("Application", "E-commerce")
+        Tags.of(self).add("PilotLight", "True")
