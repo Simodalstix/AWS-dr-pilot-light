@@ -8,6 +8,10 @@
 
 Enterprise-grade Disaster Recovery solution for e-commerce platforms using AWS Pilot Light strategy. Built with AWS CDK Python v2.111.0 following AWS Well-Architected principles.
 
+![Pilot Light DR Architecture](diagrams/dr-pilot-light-diagram.svg)
+
+*Architecture diagram created using AWS official icons and Excalidraw*
+
 ## Architecture Overview
 
 ### Pilot Light Strategy
