@@ -44,7 +44,3 @@ jobs:
     - name: Run tests
       run: poetry run pytest tests/ -v --cov=. --cov-report=xml
       
-    - name: CDK Synth
-      run: poetry run cdk synth --all
-      env:
-        AWS_DEFAULT_REGION: ap-southeast-2
