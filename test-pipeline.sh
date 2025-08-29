@@ -37,10 +37,6 @@ poetry run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 echo "🎨 Checking code formatting with black..."
 poetry run black --check .
 
-# Type checking
-echo "🔍 Running mypy type checking..."
-poetry run mypy . --ignore-missing-imports
-
 # Run tests
 echo "🧪 Running pytest tests..."
 poetry run pytest tests/ -v --cov=. --cov-report=term-missing

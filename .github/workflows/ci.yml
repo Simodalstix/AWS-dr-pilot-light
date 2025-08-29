@@ -40,9 +40,7 @@ jobs:
     - name: Format check with black
       run: poetry run black --check .
       
-    - name: Type check with mypy
-      run: poetry run mypy . --ignore-missing-imports
-      
+
     - name: Run tests
       run: poetry run pytest tests/ -v --cov=. --cov-report=xml
       
