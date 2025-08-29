@@ -8,53 +8,64 @@ from aws_cdk import (
     aws_sns as sns,
     RemovalPolicy,
     Duration,
-    Tags
+    Tags,
 )
 from constructs import Construct
 from config.environments import DatabaseConfig
 from typing import Optional
+
 
 class EcommerceDatabase(Construct):
     """
     Production-grade RDS MySQL cluster for e-commerce platform
     Includes encryption, monitoring, automated backups, and read replicas
     """
-    
-    def __init__(self, scope: Construct, construct_id: str,
-                 vpc: ec2.Vpc,
-                 config: DatabaseConfig,
-                 security_group: ec2.SecurityGroup,
-                 notification_topic: sns.Topic,
-                 is_primary: bool = True,
-                 source_database: Optional[rds.DatabaseInstance] = None,
-                 **kwargs) -> None:
+
+    def __init__(
+        self,
+        scope: Construct,
+        construct_id: str,
+        vpc: ec2.Vpc,
+        config: DatabaseConfig,
+        security_group: ec2.SecurityGroup,
+        notification_topic: sns.Topic,
+        is_primary: bool = True,
+        source_database: Optional[rds.DatabaseInstance] = None,
+        **kwargs,
+    ) -> None:
         super().__init__(scope, construct_id, **kwargs)
-        
+
         self.config = config
         self.vpc = vpc
-        
+
         # KMS key for database encryption
-        self.db_key = kms.Key(self, "DatabaseKey",
+        self.db_key = kms.Key(
+            self,
+            "DatabaseKey",
             description="KMS key for RDS encryption",
             enable_key_rotation=True,
-            removal_policy=RemovalPolicy.DESTROY
+            removal_policy=RemovalPolicy.DESTROY,
         )
-        
+
         # Database credentials in Secrets Manager
         if is_primary:
-            self.db_secret = secretsmanager.Secret(self, "DatabaseSecret",
+            self.db_secret = secretsmanager.Secret(
+                self,
+                "DatabaseSecret",
                 description="E-commerce database credentials",
                 generate_secret_string=secretsmanager.SecretStringGenerator(
                     secret_string_template='{"username": "ecomadmin"}',
                     generate_string_key="password",
                     exclude_characters=" %+~`#$&*()|[]{}:;<>?!'/\"\\",
-                    password_length=32
+                    password_length=32,
                 ),
-                kms_key=self.db_key
+                kms_key=self.db_key,
             )
-        
+
         # Parameter Group for performance optimization
-        self.parameter_group = rds.ParameterGroup(self, "DatabaseParameterGroup",
+        self.parameter_group = rds.ParameterGroup(
+            self,
+            "DatabaseParameterGroup",
             engine=rds.DatabaseInstanceEngine.mysql(
                 version=rds.MysqlEngineVersion.of(config.engine_version)
             ),
@@ -63,30 +74,34 @@ class EcommerceDatabase(Construct):
                 "max_connections": "1000",
                 "slow_query_log": "1",
                 "long_query_time": "2",
-                "log_queries_not_using_indexes": "1"
-            }
+                "log_queries_not_using_indexes": "1",
+            },
         )
-        
+
         # Option Group for enhanced monitoring
-        self.option_group = rds.OptionGroup(self, "DatabaseOptionGroup",
+        self.option_group = rds.OptionGroup(
+            self,
+            "DatabaseOptionGroup",
             engine=rds.DatabaseInstanceEngine.mysql(
                 version=rds.MysqlEngineVersion.of(config.engine_version)
             ),
-            configurations=[]
+            configurations=[],
         )
-        
+
         # Subnet Group
-        self.subnet_group = rds.SubnetGroup(self, "DatabaseSubnetGroup",
+        self.subnet_group = rds.SubnetGroup(
+            self,
+            "DatabaseSubnetGroup",
             description="Subnet group for e-commerce database",
             vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
-            )
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
         )
-        
+
         if is_primary:
             # Primary Database Instance
-            self.database = rds.DatabaseInstance(self, "PrimaryDatabase",
+            self.database = rds.DatabaseInstance(
+                self,
+                "PrimaryDatabase",
                 engine=rds.DatabaseInstanceEngine.mysql(
                     version=rds.MysqlEngineVersion.of(config.engine_version)
                 ),
@@ -110,11 +125,13 @@ class EcommerceDatabase(Construct):
                 cloudwatch_logs_exports=["error", "general", "slow-query"],
                 deletion_protection=True,
                 delete_automated_backups=False,
-                removal_policy=RemovalPolicy.SNAPSHOT
+                removal_policy=RemovalPolicy.SNAPSHOT,
             )
         else:
             # Read Replica for DR
-            self.database = rds.DatabaseInstanceReadReplica(self, "ReadReplica",
+            self.database = rds.DatabaseInstanceReadReplica(
+                self,
+                "ReadReplica",
                 source_database_instance=source_database,
                 instance_type=ec2.InstanceType(config.instance_class),
                 vpc=vpc,
@@ -128,56 +145,56 @@ class EcommerceDatabase(Construct):
                 performance_insight_retention=rds.PerformanceInsightRetention.DEFAULT,
                 deletion_protection=False,
                 remove_source_database_on_read_replica_deletion=False,
-                removal_policy=RemovalPolicy.DESTROY
+                removal_policy=RemovalPolicy.DESTROY,
             )
-        
+
         # CloudWatch Alarms
         self._create_database_alarms(notification_topic)
-        
+
         # Tags
         Tags.of(self).add("Component", "Database")
         Tags.of(self).add("Application", "E-commerce")
         Tags.of(self).add("Backup", "Automated")
-    
+
     def _create_database_alarms(self, notification_topic: sns.Topic):
         """Create comprehensive CloudWatch alarms for database monitoring"""
-        
+
         # CPU Utilization
-        cloudwatch.Alarm(self, "DatabaseCPUAlarm",
+        cloudwatch.Alarm(
+            self,
+            "DatabaseCPUAlarm",
             metric=self.database.metric_cpu_utilization(),
             threshold=80,
             evaluation_periods=2,
-            alarm_description="Database CPU utilization is high"
-        ).add_alarm_action(
-            cloudwatch.SnsAction(notification_topic)
-        )
-        
+            alarm_description="Database CPU utilization is high",
+        ).add_alarm_action(cloudwatch.SnsAction(notification_topic))
+
         # Database Connections
-        cloudwatch.Alarm(self, "DatabaseConnectionsAlarm",
+        cloudwatch.Alarm(
+            self,
+            "DatabaseConnectionsAlarm",
             metric=self.database.metric_database_connections(),
             threshold=800,
             evaluation_periods=2,
-            alarm_description="Database connection count is high"
-        ).add_alarm_action(
-            cloudwatch.SnsAction(notification_topic)
-        )
-        
+            alarm_description="Database connection count is high",
+        ).add_alarm_action(cloudwatch.SnsAction(notification_topic))
+
         # Read Latency
-        cloudwatch.Alarm(self, "DatabaseReadLatencyAlarm",
+        cloudwatch.Alarm(
+            self,
+            "DatabaseReadLatencyAlarm",
             metric=self.database.metric_read_latency(),
             threshold=0.2,
             evaluation_periods=2,
-            alarm_description="Database read latency is high"
-        ).add_alarm_action(
-            cloudwatch.SnsAction(notification_topic)
-        )
-        
+            alarm_description="Database read latency is high",
+        ).add_alarm_action(cloudwatch.SnsAction(notification_topic))
+
         # Write Latency
-        cloudwatch.Alarm(self, "DatabaseWriteLatencyAlarm",
+        cloudwatch.Alarm(
+            self,
+            "DatabaseWriteLatencyAlarm",
             metric=self.database.metric_write_latency(),
             threshold=0.2,
             evaluation_periods=2,
-            alarm_description="Database write latency is high"
-        ).add_alarm_action(
-            cloudwatch.SnsAction(notification_topic)
-        )
+            alarm_description="Database write latency is high",
+        ).add_alarm_action(cloudwatch.SnsAction(notification_topic))

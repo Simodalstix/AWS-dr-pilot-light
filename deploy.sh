@@ -36,7 +36,7 @@ echo "DR Region: $DR_REGION (Singapore)"
 
 # Install Python dependencies
 echo "Installing Python dependencies..."
-pip install -r requirements.txt
+poetry install
 
 # Bootstrap CDK in both regions
 echo "Bootstrapping CDK..."
@@ -50,13 +50,13 @@ cdk bootstrap aws://$ACCOUNT_ID/$DR_REGION
 echo "Deploying infrastructure..."
 
 echo "   Deploying primary region stack..."
-cdk deploy EcommercePrimaryStack --require-approval never
+poetry run cdk deploy EcommercePrimaryStack --require-approval never
 
 echo "   Deploying DR region stack..."
-cdk deploy EcommerceDRStack --require-approval never
+poetry run cdk deploy EcommerceDRStack --require-approval never
 
 echo "   Deploying global resources..."
-cdk deploy EcommerceGlobalStack --require-approval never
+poetry run cdk deploy EcommerceGlobalStack --require-approval never
 
 echo "Deployment completed successfully!"
 echo ""

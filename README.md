@@ -1,8 +1,10 @@
 # AWS E-commerce Pilot Light Disaster Recovery
 
-[![AWS](https://img.shields.io/badge/AWS-CDK-orange)](https://aws.amazon.com/cdk/)
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
+[![CI](https://github.com/Simodalstix/AWS-dr-pilot-light/workflows/CI/badge.svg)](https://github.com/Simodalstix/AWS-dr-pilot-light/actions)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.9+-blue)](https://python.org)
+[![CDK](https://img.shields.io/badge/AWS%20CDK-2.111.0-orange)](https://aws.amazon.com/cdk/)
+[![Release](https://img.shields.io/github/v/release/Simodalstix/AWS-dr-pilot-light)](https://github.com/Simodalstix/AWS-dr-pilot-light/releases)
 
 Enterprise-grade Disaster Recovery solution for e-commerce platforms using AWS Pilot Light strategy. Built with AWS CDK Python v2.111.0 following AWS Well-Architected principles.
 
@@ -44,26 +46,28 @@ Enterprise-grade Disaster Recovery solution for e-commerce platforms using AWS P
 - Python 3.11+ with pip
 - Domain name for Route 53 (optional)
 
-### One-Command Deployment
+### Quickstart
 ```bash
-# Clone and deploy
-git clone <repository-url>
+# Clone and setup
+git clone https://github.com/Simodalstix/AWS-dr-pilot-light.git
 cd AWS-dr-pilot-light
-./deploy.sh
+poetry install
+
+# Validate infrastructure
+poetry run cdk synth
 ```
 
-### Manual Deployment
+### Deployment
 ```bash
-# Install dependencies
-npm install -g aws-cdk
-pip install -r requirements.txt
+# Install AWS CDK
+npm install -g aws-cdk@2.111.0
 
-# Bootstrap regions
-cdk bootstrap --region ap-southeast-2  # Sydney
-cdk bootstrap --region ap-southeast-1  # Singapore
+# Bootstrap regions (one-time setup)
+poetry run cdk bootstrap --region ap-southeast-2  # Sydney
+poetry run cdk bootstrap --region ap-southeast-1  # Singapore
 
 # Deploy infrastructure
-cdk deploy --all --require-approval never
+poetry run cdk deploy --all --require-approval never
 ```
 
 ## Disaster Recovery Operations
@@ -188,13 +192,42 @@ aws cloudwatch set-alarm-state \
 - **CloudWatch Alarms**: Automated threshold monitoring
 - **Step Functions**: Workflow execution status
 
+## Why This Matters
+
+This project demonstrates real-world disaster recovery patterns used by e-commerce companies:
+- **Cost-effective**: 80% savings vs warm standby while meeting RTO/RPO requirements
+- **Automated**: Zero-touch failover using Step Functions orchestration
+- **Compliant**: Australian data sovereignty with proper security controls
+- **Production-ready**: Comprehensive monitoring, alerting, and validation
+
+## Cost & Security Notes
+
+**Monthly Costs:**
+- Primary Region: ~$200-500 (production workload)
+- DR Region: ~$50-100 (pilot light mode)
+- Global Resources: ~$10-20
+
+**Security:**
+- All data encrypted at rest and in transit
+- IAM roles follow least privilege principle
+- WAF protection with rate limiting
+- VPC isolation with security groups and NACLs
+- GuardDuty threat detection enabled
+
+**Monitoring:**
+- CloudWatch dashboards for DR metrics
+- SNS notifications for critical events
+- Route 53 health checks with automated failover
+- Step Functions execution tracking
+
 ## Contributing
 
-This is a portfolio project demonstrating enterprise-grade AWS architecture. Feel free to:
-- Report issues or suggest improvements
-- Fork for your own DR implementations
-- Use as reference for AWS CDK best practices
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+**Note**: This project requires AWS credentials for CDK synthesis due to cross-region lookups. Ensure your AWS CLI is configured before running `cdk synth`.

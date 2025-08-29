@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "aws-dr-pilot-light"
+version = "0.1.0"
+description = "Enterprise-grade Disaster Recovery solution using AWS Pilot Light strategy"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/Simodalstix/AWS-dr-pilot-light"
+keywords = ["aws", "cdk", "disaster-recovery", "pilot-light", "infrastructure"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.9"
+aws-cdk-lib = "2.111.0"
+constructs = "10.3.0"
+boto3 = "^1.34.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+black = "^23.0.0"
+flake8 = "^6.0.0"
+mypy = "^1.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
