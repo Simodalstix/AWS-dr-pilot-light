@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.9+-blue)](https://python.org)
 [![CDK](https://img.shields.io/badge/AWS%20CDK-2.111.0-orange)](https://aws.amazon.com/cdk/)
-[![Release](https://img.shields.io/github/v/release/Simodalstix/AWS-dr-pilot-light?include_prereleases)](https://github.com/Simodalstix/AWS-dr-pilot-light/releases)
+[![Release](https://img.shields.io/github/v/tag/Simodalstix/AWS-dr-pilot-light)](https://github.com/Simodalstix/AWS-dr-pilot-light/releases)
 
 Enterprise-grade Disaster Recovery solution for e-commerce platforms using AWS Pilot Light strategy. Built with AWS CDK Python v2.111.0 following AWS Well-Architected principles.
 
